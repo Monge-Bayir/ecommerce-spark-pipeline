@@ -1,0 +1,63 @@
+# Настоящий standalone-кластер Spark: master и 2 worker'а — это ОТДЕЛЬНЫЕ
+# контейнеры (в отличие от local[*], где всё было потоками одного процесса).
+#
+# Образ: apache/spark (официальный Docker Official Image).
+# bitnami/spark больше не годится — с августа 2025 Bitnami перенесла почти
+# весь бесплатный каталог в docker.io/bitnamilegacy без обновлений и без
+# версионных тегов, поэтому bitnami/spark:3.5 просто не существует.
+#
+# У apache/spark нет env-переключателя SPARK_MODE (это была фича именно
+# bitnami-образов) — master/worker запускаются явной командой spark-class.
+#
+# Master UI:      http://localhost:8080
+# Worker UI:       http://localhost:8081 / http://localhost:8082
+# Application UI:  http://localhost:4040 (появляется, когда что-то считается)
+
+services:
+  spark-master:
+    image: apache/spark:3.5.3
+    container_name: spark-master
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+      --host spark-master --port 7077 --webui-port 8080
+    ports:
+      - "8080:8080"   # Master Web UI
+      - "7077:7077"   # Master RPC (сюда коннектятся workers и spark-submit)
+      - "4040:4040"   # Application UI (когда запущена джоба)
+    volumes:
+      - ./apps:/opt/spark/apps   # сюда клади свои .py файлы
+      - ./data:/opt/spark/data
+
+  spark-worker-1:
+    image: apache/spark:3.5.3
+    container_name: spark-worker-1
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077 --webui-port 8081
+    environment:
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=1g
+    ports:
+      - "8081:8081"   # Worker Web UI
+    depends_on:
+      - spark-master
+    volumes:
+      - ./apps:/opt/spark/apps
+      - ./data:/opt/spark/data
+
+  spark-worker-2:
+    image: apache/spark:3.5.3
+    container_name: spark-worker-2
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077 --webui-port 8081
+    environment:
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=1g
+    ports:
+      - "8082:8081"   # Worker Web UI (маппим на другой внешний порт, внутри всё равно 8081)
+    depends_on:
+      - spark-master
+    volumes:
+      - ./apps:/opt/spark/apps
+      - ./data:/opt/spark/data
